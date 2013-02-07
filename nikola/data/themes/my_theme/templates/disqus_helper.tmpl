@@ -1,0 +1,48 @@
+# -*- encoding:utf-8 -*-
+<%!
+    import json
+%>
+<%def name="html_disqus(url, title, identifier)">
+    %if disqus_forum:
+    <!-- Baidu Button BEGIN -->
+    <style>
+    .bdlikebutton{
+        margin:0 auto;
+    }
+    </style>
+    <div class="bdlikebutton"></div>
+    <div id="bdshare" class="bdshare_t bds_tools_32 get-codes-bdshare">
+    <a class="bds_tsina"></a>
+    <a class="bds_qzone"></a>
+    <a class="bds_tqq"></a>
+    <a class="bds_tqf"></a>
+    <a class="bds_renren"></a>
+    <a class="bds_douban"></a>
+    <a class="bds_fbook"></a>
+    <a class="bds_twi"></a>
+    <a class="bds_linkedin"></a>
+    <a class="bds_mail"></a>
+    <a class="bds_mshare"></a>
+    <span class="bds_more"></span>
+    <a class="shareCount"></a>
+    </div>
+    <!-- Baidu Button END -->
+    %endif
+</%def>
+
+<%def name="html_disqus_link(link, identifier)">
+    <p>
+    %if disqus_forum:
+        <style>
+        .bdlikebutton{
+            margin:0 auto;
+        }
+        </style>
+        <div class="bdlikebutton"></div>
+    %endif
+</%def>
+
+<%def name="html_disqus_script()">
+    %if disqus_forum:
+    %endif
+</%def>
