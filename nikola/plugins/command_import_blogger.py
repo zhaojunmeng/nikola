@@ -27,21 +27,20 @@ import codecs
 import csv
 import datetime
 import os
-import re
 from optparse import OptionParser
+import time
 
 try:
     from urlparse import urlparse
 except ImportError:
     from urllib.parse import urlparse  # NOQA
 
-from lxml import etree, html
-from mako.template import Template
-
 try:
-    import requests
+    import feedparser
 except ImportError:
-    requests = None  # NOQA
+    feedparser = None  # NOQA
+from lxml import html
+from mako.template import Template
 
 from nikola.plugin_categories import Command
 from nikola import utils
@@ -49,30 +48,14 @@ from nikola import utils
 links = {}
 
 
-class CommandImportWordpress(Command):
-    """Import a wordpress dump."""
+class CommandImportBlogger(Command):
+    """Import a blogger dump."""
 
-    name = "import_wordpress"
-
-    @staticmethod
-    def read_xml_file(filename):
-        xml = []
-
-        with open(filename, 'rb') as fd:
-            for line in fd:
-                # These explode etree and are useless
-                if b'<atom:link rel=' in line:
-                    continue
-                xml.append(line)
-            xml = b'\n'.join(xml)
-
-        return xml
+    name = "import_blogger"
 
     @classmethod
     def get_channel_from_file(cls, filename):
-        tree = etree.fromstring(cls.read_xml_file(filename))
-        channel = tree.find('channel')
-        return channel
+        return feedparser.parse(filename)
 
     @staticmethod
     def configure_redirections(url_map):
@@ -103,27 +86,18 @@ class CommandImportWordpress(Command):
 
     @staticmethod
     def populate_context(channel):
-        wordpress_namespace = channel.nsmap['wp']
-
         context = {}
-        context['DEFAULT_LANG'] = get_text_tag(channel, 'language', 'en')[:2]
-        context['BLOG_TITLE'] = get_text_tag(channel, 'title',
-                                             'PUT TITLE HERE')
-        context['BLOG_DESCRIPTION'] = get_text_tag(
-            channel, 'description', 'PUT DESCRIPTION HERE')
-        context['BLOG_URL'] = get_text_tag(channel, 'link', '#')
-        author = channel.find('{%s}author' % wordpress_namespace)
-        context['BLOG_EMAIL'] = get_text_tag(
-            author,
-            '{%s}author_email' % wordpress_namespace,
-            "joe@example.com")
-        context['BLOG_AUTHOR'] = get_text_tag(
-            author,
-            '{%s}author_display_name' % wordpress_namespace,
-            "Joe Example")
+        context['DEFAULT_LANG'] = 'en'  # blogger doesn't include the language
+                                        # in the dump
+        context['BLOG_TITLE'] = channel.feed.title
+
+        context['BLOG_DESCRIPTION'] = ''  # Missing in the dump
+        context['BLOG_URL'] = channel.feed.link.rstrip('/')
+        context['BLOG_EMAIL'] = channel.feed.author_detail.email
+        context['BLOG_AUTHOR'] = channel.feed.author_detail.name
         context['POST_PAGES'] = '''(
-            ("posts/*.wp", "posts", "post.tmpl", True),
-            ("stories/*.wp", "stories", "story.tmpl", False),
+            ("posts/*.html", "posts", "post.tmpl", True),
+            ("stories/*.html", "stories", "story.tmpl", False),
         )'''
         context['POST_COMPILERS'] = '''{
         "rest": ('.txt', '.rst'),
@@ -134,49 +108,10 @@ class CommandImportWordpress(Command):
 
         return context
 
-    @staticmethod
-    def download_url_content_to_file(url, dst_path):
-        try:
-            with open(dst_path, 'wb+') as fd:
-                fd.write(requests.get(url).content)
-        except requests.exceptions.ConnectionError as err:
-            print("Downloading %s to %s failed: %s" % (url, dst_path, err))
-
-    def import_attachment(self, item, wordpress_namespace):
-        url = get_text_tag(
-            item, '{%s}attachment_url' % wordpress_namespace, 'foo')
-        link = get_text_tag(item, '{%s}link' % wordpress_namespace, 'foo')
-        path = urlparse(url).path
-        dst_path = os.path.join(*([self.output_folder, 'files']
-                                  + list(path.split('/'))))
-        dst_dir = os.path.dirname(dst_path)
-        if not os.path.isdir(dst_dir):
-            os.makedirs(dst_dir)
-        print("Downloading %s => %s" % (url, dst_path))
-        self.download_url_content_to_file(url, dst_path)
-        dst_url = '/'.join(dst_path.split(os.sep)[2:])
-        links[link] = '/' + dst_url
-        links[url] = '/' + dst_url
-
-    @staticmethod
-    def transform_sourcecode(content):
-        new_content = re.sub('\[sourcecode language="([^"]+)"\]',
-                             "\n~~~~~~~~~~~~{.\\1}\n", content)
-        new_content = new_content.replace('[/sourcecode]',
-                                          "\n~~~~~~~~~~~~\n")
-        return new_content
-
-    @staticmethod
-    def transform_caption(content):
-        new_caption = re.sub(r'\[/caption\]', '', content)
-        new_caption = re.sub(r'\[caption.*\]', '', new_caption)
-
-        return new_caption
-
     @classmethod
     def transform_content(cls, content):
-        new_content = cls.transform_sourcecode(content)
-        return cls.transform_caption(new_content)
+        # No transformations yet
+        return content
 
     @classmethod
     def write_content(cls, filename, content):
@@ -196,46 +131,53 @@ class CommandImportWordpress(Command):
             fd.write('\n')
             fd.write('%s\n' % description)
 
-    def import_item(self, item, wordpress_namespace, out_folder=None):
+    def import_item(self, item, out_folder=None):
         """Takes an item from the feed and creates a post file."""
         if out_folder is None:
             out_folder = 'posts'
 
-        title = get_text_tag(item, 'title', 'NO TITLE')
         # link is something like http://foo.com/2012/09/01/hello-world/
         # So, take the path, utils.slugify it, and that's our slug
-        link = get_text_tag(item, 'link', None)
-        slug = utils.slugify(urlparse(link).path)
-        if not slug:  # it happens if the post has no "nice" URL
-            slug = get_text_tag(
-                item, '{%s}post_name' % wordpress_namespace, None)
-        if not slug:  # it *may* happen
-            slug = get_text_tag(
-                item, '{%s}post_id' % wordpress_namespace, None)
+        link = item.link
+        link_path = urlparse(link).path
+
+        title = item.title
+
+        # blogger supports empty titles, which Nikola doesn't
+        if not title:
+            print("Warning: Empty title in post with URL %s. Using NO_TITLE "
+                  "as placeholder, please fix." % link)
+            title = "NO_TITLE"
+
+        if link_path.lower().endswith('.html'):
+            link_path = link_path[:-5]
+
+        slug = utils.slugify(link_path)
+
         if not slug:  # should never happen
             print("Error converting post:", title)
             return
 
-        description = get_text_tag(item, 'description', '')
-        post_date = get_text_tag(
-            item, '{%s}post_date' % wordpress_namespace, None)
-        status = get_text_tag(
-            item, '{%s}status' % wordpress_namespace, 'publish')
-        content = get_text_tag(
-            item, '{http://purl.org/rss/1.0/modules/content/}encoded', '')
+        description = ''
+        post_date = datetime.datetime.fromtimestamp(time.mktime(
+            item.published_parsed))
+
+        for candidate in item.content:
+            if candidate.type == 'text/html':
+                content = candidate.value
+                break
+                #  FIXME: handle attachments
 
         tags = []
-        if status != 'publish':
+        for tag in item.tags:
+            if tag.scheme == 'http://www.blogger.com/atom/ns#':
+                tags.append(tag.term)
+
+        if item.get('app_draft'):
             tags.append('draft')
             is_draft = True
         else:
             is_draft = False
-
-        for tag in item.findall('category'):
-            text = tag.text
-            if text == 'Uncategorized':
-                continue
-            tags.append(text)
 
         self.url_map[link] = self.context['BLOG_URL'] + '/' + \
             out_folder + '/' + slug + '.html'
@@ -250,28 +192,36 @@ class CommandImportWordpress(Command):
                                              slug + '.meta'),
                                 title, slug, post_date, description, tags)
             self.write_content(
-                os.path.join(self.output_folder, out_folder, slug + '.wp'),
+                os.path.join(self.output_folder, out_folder, slug + '.html'),
                 content)
         else:
             print('Not going to import "%s" because it seems to contain'
                   ' no content.' % (title, ))
 
     def process_item(self, item):
-        # The namespace usually is something like:
-        # http://wordpress.org/export/1.2/
-        wordpress_namespace = item.nsmap['wp']
-        post_type = get_text_tag(
-            item, '{%s}post_type' % wordpress_namespace, 'post')
+        post_type = item.tags[0].term
 
-        if post_type == 'attachment':
-            self.import_attachment(item, wordpress_namespace)
-        elif post_type == 'post':
-            self.import_item(item, wordpress_namespace, 'posts')
+        if post_type == 'http://schemas.google.com/blogger/2008/kind#post':
+            self.import_item(item, 'posts')
+        elif post_type == 'http://schemas.google.com/blogger/2008/kind#page':
+            self.import_item(item, 'stories')
+        elif post_type == ('http://schemas.google.com/blogger/2008/kind'
+                           '#settings'):
+            # Ignore settings
+            pass
+        elif post_type == ('http://schemas.google.com/blogger/2008/kind'
+                           '#template'):
+            # Ignore template
+            pass
+        elif post_type == ('http://schemas.google.com/blogger/2008/kind'
+                           '#comment'):
+            # FIXME: not importing comments. Does blogger support "pages"?
+            pass
         else:
-            self.import_item(item, wordpress_namespace, 'stories')
+            print("Unknown post_type:", post_type)
 
     def import_posts(self, channel):
-        for item in channel.findall('item'):
+        for item in channel.entries:
             self.process_item(item)
 
     @staticmethod
@@ -300,19 +250,20 @@ class CommandImportWordpress(Command):
     def run(self, *arguments):
         """Import a Wordpress blog from an export file into a Nikola site."""
         # Parse the data
-        if requests is None:
-            print('To use the import_wordpress command,'
-                  ' you have to install the "requests" package.')
+        if feedparser is None:
+            print('To use the import_blogger command,'
+                  ' you have to install the "feedparser" package.')
             return
 
-        parser = OptionParser(usage="nikola %s [options] "
-                              "wordpress_export_file" % self.name)
+        parser = OptionParser(
+            usage="nikola %s [options] blogger_export_file" % self.name)
         parser.add_option('-f', '--filename', dest='filename',
-                          help='WordPress export file from which the import '
-                          'made.')
+                          help='Blogger export file from which the import is '
+                               'made.')
         parser.add_option('-o', '--output-folder', dest='output_folder',
-                          default='new_site', help='The location into which '
-                          'the imported content will be written')
+                          default='new_site',
+                          help='The location into which the imported content '
+                               'will be written')
         parser.add_option('-d', '--no-drafts', dest='exclude_drafts',
                           default=False, action="store_true", help='Do not '
                           'import drafts.')
@@ -326,12 +277,12 @@ class CommandImportWordpress(Command):
             parser.print_usage()
             return
 
-        self.wordpress_export_file = options.filename
+        self.blogger_export_file = options.filename
         self.output_folder = options.output_folder
         self.import_into_existing_site = False
         self.exclude_drafts = options.exclude_drafts
         self.url_map = {}
-        channel = self.get_channel_from_file(self.wordpress_export_file)
+        channel = self.get_channel_from_file(self.blogger_export_file)
         self.context = self.populate_context(channel)
         conf_template = self.generate_base_site()
         self.context['REDIRECTIONS'] = self.configure_redirections(
@@ -347,13 +298,3 @@ class CommandImportWordpress(Command):
 
 def replacer(dst):
     return links.get(dst, dst)
-
-
-def get_text_tag(tag, name, default):
-    if tag is None:
-        return default
-    t = tag.find(name)
-    if t is not None:
-        return t.text
-    else:
-        return default
