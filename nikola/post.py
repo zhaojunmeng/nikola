@@ -53,6 +53,7 @@ class Post(object):
         self.next_post = None
         self.blog_url = blog_url
         self.is_draft = False
+        self.is_mathjax = False
         self.source_path = source_path  # posts/blah.txt
         self.post_name = os.path.splitext(source_path)[0]  # posts/blah
         # cache/posts/blah.html
@@ -88,6 +89,9 @@ class Post(object):
         self.use_in_feeds = use_in_feeds and "draft" not in self.tags
         self.is_draft = 'draft' in self.tags
         self.tags = [t for t in self.tags if t != 'draft']
+        
+        # If mathjax is a tag, then enable mathjax rendering support 
+        self.is_mathjax = 'mathjax' in self.tags
 
         self.pagenames = {}
         self.titles = {}
@@ -169,7 +173,7 @@ class Post(object):
                 file_name = file_name_lang
         return file_name
 
-    def text(self, lang, teaser_only=False):
+    def text(self, lang, teaser_only=False, strip_html=False):
         """Read the post file for that language and return its contents"""
         file_name = self._translated_file_path(lang)
 
@@ -193,6 +197,11 @@ class Post(object):
                               (self.permalink(lang),
                                self.messages[lang]["Read more"]))
             data = ''.join(teaser)
+
+        if data and strip_html:
+            content = lxml.html.fromstring(data)
+            data = content.text_content().strip()  # No whitespace wanted.
+
         return data
 
     def destination_path(self, lang, extension='.html'):

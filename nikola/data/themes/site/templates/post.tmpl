@@ -2,6 +2,9 @@
 <%namespace name="helper" file="post_helper.tmpl"/>
 <%namespace name="disqus" file="disqus_helper.tmpl"/>
 <%inherit file="base.tmpl"/>
+<%block name="extra_head">
+${helper.twitter_card_information(post)}
+</%block>
 <%block name="content">
     <div class="postbox">
     ${helper.html_title()}
@@ -15,6 +18,7 @@
     ${post.text(lang)}
     ${helper.html_pager(post)}
     ${disqus.html_disqus(post.permalink(absolute=True), post.title(lang), post.base_path)}
+    ${helper.mathjax_script(post)}
     </div>
 </%block>
 
