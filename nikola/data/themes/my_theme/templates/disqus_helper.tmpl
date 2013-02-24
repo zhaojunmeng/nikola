@@ -27,20 +27,18 @@
     <a class="shareCount"></a>
     </div>
     <!-- Baidu Button END -->
-    <div class="ds-thread"></div>
+    <!-- Duoshuo Comment BEGIN -->
+    <div class="ds-thread" data-title="${title}" data-thread-key="${identifier}"></div>
+    <!-- Duoshuo Comment END -->
     %endif
 </%def>
 
 <%def name="html_disqus_link(link, identifier)">
     <p>
     %if disqus_forum:
-        <style>
-        .bdlikebutton{
-            margin:0 auto;
-        }
-        </style>
-        <div class="bdlikebutton"></div>
-        <div class="ds-thread"></div>
+        <!-- Duoshuo Comment BEGIN -->
+        <span class="ds-thread-count" data-thread-key="${identifier}"></span>
+        <!-- Duoshuo Comment END -->
     %endif
 </%def>
 
