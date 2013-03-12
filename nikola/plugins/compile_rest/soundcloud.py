@@ -1,12 +1,11 @@
 from docutils import nodes
 from docutils.parsers.rst import directives
 
-CODE = """\
-<iframe width="%(width)d" height="%(height)d"
+CODE = ("""<iframe width="{width}" height="{height}"
 scrolling="no" frameborder="no"
-src="https://w.soundcloud.com/player/?url=http://api.soundcloud.com/tracks/%(sid)s">
-</iframe>
-"""
+src="https://w.soundcloud.com/player/?url=http://api.soundcloud.com/tracks/"""
+        """{sid}">
+</iframe>""")
 
 
 def soundcloud(name, args, options, content, lineno,
@@ -27,7 +26,7 @@ def soundcloud(name, args, options, content, lineno,
     if 'height' in extra_args:
         string_vars['height'] = extra_args.pop('height')
 
-    return [nodes.raw('', CODE % string_vars, format='html')]
+    return [nodes.raw('', CODE.format(**string_vars), format='html')]
 
 soundcloud.content = True
 directives.register_directive('soundcloud', soundcloud)
