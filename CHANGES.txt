@@ -7,6 +7,8 @@ Features
 * Added gist support for Markdown.
 * New "nocomments" metadata that disables comments for a page/post (Issue #278).
 * New HIDE_UNTRANSLATED_POSTS option (does nothing yet)
+* New EXTRA_HEAD_DATA option, which adds extra things in <HEAD> (Issue #385)
+* Moved translations to transifex.com
 
 Bugfixes
 --------
@@ -19,6 +21,15 @@ Bugfixes
 * Nicer tag listing.
 * Fixed unicode bug in markdown compiler.
 * Fixed unicode crash with polish dates and %B (Issue #383)
+* Fixed localsearch plugin
+* Warn if combining USE_CDN with a theme providing a copy of bootstrap (Issue #386)
+* Improved localsearch README
+* Updated to Tipue 2.1
+* Don't index draft posts for Tipue (Issue #387)
+* Modernized all rst extensions, added tests (rbistolfi)
+* Removed obsolete custom code-block directive
+* New function messages(msgid, lang=current_lang) available for templates
+* Fixed teasers (Issue #398)
 
 New in 5.4.2
 ============

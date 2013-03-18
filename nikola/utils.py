@@ -29,6 +29,7 @@ from __future__ import print_function, unicode_literals
 from collections import defaultdict, Callable
 import datetime
 import hashlib
+import locale
 import os
 import re
 import codecs
@@ -49,9 +50,12 @@ if sys.version_info[0] == 3:
     bytes_str = bytes
     unicode_str = str
     unichr = chr
+    from imp import reload as _reload
 else:
     bytes_str = str
     unicode_str = unicode  # NOQA
+    _reload = reload  # NOQA
+    unichr = unichr
 
 from doit import tools
 from unidecode import unidecode
@@ -60,7 +64,39 @@ import PyRSS2Gen as rss
 
 __all__ = ['get_theme_path', 'get_theme_chain', 'load_messages', 'copy_tree',
            'generic_rss_renderer', 'copy_file', 'slugify', 'unslugify',
-           'to_datetime', 'apply_filters', 'config_changed', 'get_crumbs']
+           'to_datetime', 'apply_filters', 'config_changed', 'get_crumbs',
+           'get_asset_path', '_reload', 'unicode_str', 'bytes_str',
+           'unichr', 'Functionary']
+
+
+class Functionary(defaultdict):
+
+    """Class that looks like a function, but is a defaultdict."""
+
+    def __init__(self, default, default_lang):
+        super(Functionary, self).__init__(default)
+        self.default_lang = default_lang
+
+    def current_lang(self):
+        """Guess the current language from locale or default."""
+        lang = locale.getlocale()[0]
+        if lang:
+            if lang in self.keys():
+                return lang
+            lang = lang.split('_')[0]
+            if lang in self.keys():
+                return lang
+        # whatever
+        return self.default_lang
+
+    def __call__(self, key, lang=None):
+        """When called as a function, take an optional lang
+        and return self[lang][key]."""
+
+        if lang is None:
+            lang = self.current_lang()
+
+        return self[lang][key]
 
 
 class CustomEncoder(json.JSONEncoder):
@@ -146,7 +182,7 @@ def load_messages(themes, translations):
     All the messages from parent themes are loaded,
     and "younger" themes have priority.
     """
-    messages = defaultdict(dict)
+    messages = Functionary(dict, 'en')
     warned = []
     oldpath = sys.path[:]
     for theme_name in themes[::-1]:
@@ -448,3 +484,44 @@ def get_crumbs(path, is_file=False):
             _path = '/'.join(['..'] * i) or '#'
             _crumbs.append([_path, crumb])
     return list(reversed(_crumbs))
+
+
+def get_asset_path(path, themes, files_folders={'files': ''}):
+    """Checks which theme provides the path with the given asset,
+    and returns the "real" path to the asset, relative to the
+    current directory.
+
+    If the asset is not provided by a theme, then it will be checked for
+    in the FILES_FOLDERS
+
+    >>> print(get_asset_path('assets/css/rst.css', ['site', 'default']))
+    nikola/data/themes/default/assets/css/rst.css
+
+    >>> print(get_asset_path('assets/css/theme.css', ['site', 'default']))
+    nikola/data/themes/site/assets/css/theme.css
+
+    >>> print(get_asset_path('nikola.py', ['site', 'default'], {'nikola': ''}))
+    nikola/nikola.py
+
+    >>> print(get_asset_path('nikola/nikola.py', ['site', 'default'],
+    ... {'nikola':'nikola'}))
+    nikola/nikola.py
+
+    """
+    for theme_name in themes:
+        candidate = os.path.join(
+            get_theme_path(theme_name),
+            path
+        )
+        if os.path.isfile(candidate):
+            return os.path.relpath(candidate, os.getcwd())
+    for src, rel_dst in files_folders.items():
+        candidate = os.path.join(
+            src,
+            os.path.relpath(path, rel_dst)
+        )
+        if os.path.isfile(candidate):
+            return os.path.relpath(candidate, os.getcwd())
+
+    # whatever!
+    return None

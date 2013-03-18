@@ -35,6 +35,7 @@ try:
     from urlparse import urlparse, urlsplit, urljoin
 except ImportError:
     from urllib.parse import urlparse, urlsplit, urljoin  # NOQA
+import warnings
 
 import lxml.html
 from yapsy.PluginManager import PluginManager
@@ -98,6 +99,7 @@ class Nikola(object):
             'DEPLOY_COMMANDS': [],
             'DISABLED_PLUGINS': (),
             'DISQUS_FORUM': 'nikolademo',
+            'EXTRA_HEAD_DATA': '',
             'FAVICONS': {},
             'FILE_METADATA_REGEXP': None,
             'FILES_FOLDERS': {'files': ''},
@@ -249,6 +251,7 @@ class Nikola(object):
         self.GLOBAL_CONTEXT['sidebar_links'] = self.config.get('SIDEBAR_LINKS')
         self.GLOBAL_CONTEXT['twitter_card'] = self.config.get(
             'TWITTER_CARD', {})
+        self.GLOBAL_CONTEXT['extra_head_data'] = self.config.get('EXTRA_HEAD_DATA')
 
         self.GLOBAL_CONTEXT.update(self.config.get('GLOBAL_CONTEXT', {}))
 
@@ -274,6 +277,13 @@ class Nikola(object):
                        for name in self.THEMES]
         self.template_system.set_directories(lookup_dirs,
                                              self.config['CACHE_FOLDER'])
+
+        # Check consistency of USE_CDN and the current THEME (Issue #386)
+        if self.config['USE_CDN']:
+            bootstrap_path = utils.get_asset_path(os.path.join(
+                'assets', 'css', 'bootstrap.min.css'), self.THEMES)
+            if bootstrap_path.split(os.sep)[-4] != 'site':
+                warnings.warn('The USE_CDN option may be incompatible with your theme, because it uses a hosted version of bootstrap.')
 
         # Load compiler plugins
         self.compilers = {}
@@ -326,11 +336,9 @@ class Nikola(object):
         data = self.template_system.render_template(
             template_name, None, local_context)
 
-        assert isinstance(output_name, bytes)
         assert output_name.startswith(
-            self.config["OUTPUT_FOLDER"].encode('utf8'))
-        url_part = output_name.decode('utf8')[len(self.config["OUTPUT_FOLDER"])
-                                              + 1:]
+            self.config["OUTPUT_FOLDER"])
+        url_part = output_name[len(self.config["OUTPUT_FOLDER"]) + 1:]
 
         # Treat our site as if output/ is "/" and then make all URLs relative,
         # making the site "relocatable"
@@ -661,7 +669,7 @@ class Nikola(object):
         else:
             context['enable_comments'] = self.config['COMMENTS_IN_STORIES']
         output_name = os.path.join(self.config['OUTPUT_FOLDER'],
-                                   post.destination_path(lang)).encode('utf8')
+                                   post.destination_path(lang))
         deps_dict = copy(context)
         deps_dict.pop('post')
         if post.prev_post:
@@ -688,9 +696,6 @@ class Nikola(object):
     def generic_post_list_renderer(self, lang, posts, output_name,
                                    template_name, filters, extra_context):
         """Renders pages with lists of posts."""
-
-        # This is a name on disk, has to be bytes
-        assert isinstance(output_name, bytes)
 
         deps = self.template_system.template_deps(template_name)
         for post in posts:
