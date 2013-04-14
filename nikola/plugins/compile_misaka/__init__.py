@@ -1,4 +1,4 @@
-# Copyright (c) 2013 Damian Avila.
+# Copyright (c) 2013 Chris Lee
 
 # Permission is hereby granted, free of charge, to any
 # person obtaining a copy of this software and associated
@@ -22,77 +22,61 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-"""Implementation of compile_html based on nbconvert."""
+"""Implementation of compile_html based on misaka."""
 
-from __future__ import unicode_literals, print_function
+from __future__ import unicode_literals
+
 import codecs
 import os
 
 try:
-    from .nbformat import current as nbformat
-    from .nbconvert.converters import bloggerhtml as nbconverter
-    bloggerhtml = True
+    import misaka
+
 except ImportError:
-    bloggerhtml = None
+    misaka = None  # NOQA
+    nikola_extension = None
+    gist_extension = None
+    podcast_extension = None
 
 from nikola.plugin_categories import PageCompiler
 
 
-class CompileIPynb(PageCompiler):
-    """Compile IPynb into HTML."""
+class CompileMarkdown(PageCompiler):
+    """Compile markdown into HTML."""
 
-    name = "ipynb"
+    name = "markdown"
+
+    def __init__(self, *args, **kwargs):
+        super(CompileMarkdown, self).__init__(*args, **kwargs)
+        if misaka is not None:
+            self.ext = misaka.EXT_FENCED_CODE | misaka.EXT_STRIKETHROUGH | \
+                misaka.EXT_AUTOLINK | misaka.EXT_NO_INTRA_EMPHASIS
 
     def compile_html(self, source, dest):
-        if bloggerhtml is None:
-            raise Exception('To build this site, you also need '
-                            'https://github.com/damianavila/com'
-                            'pile_ipynb-for-Nikola.git.')
+        if misaka is None:
+            raise Exception('To build this site, you need to install the '
+                            '"misaka" package.')
         try:
             os.makedirs(os.path.dirname(dest))
         except:
             pass
-        converter = nbconverter.ConverterBloggerHTML()
         with codecs.open(dest, "w+", "utf8") as out_file:
             with codecs.open(source, "r", "utf8") as in_file:
                 data = in_file.read()
-                converter.nb = nbformat.reads_json(data)
-            output = converter.convert()
+            output = misaka.html(data, extensions=self.ext)
             out_file.write(output)
 
-    def create_post(self, path, onefile=False, title="", slug="", date="",
-                    tags=""):
+    def create_post(self, path, onefile=False, **kw):
+        metadata = {}
+        metadata.update(self.default_metadata)
+        metadata.update(kw)
         d_name = os.path.dirname(path)
         if not os.path.isdir(d_name):
             os.makedirs(os.path.dirname(path))
-        meta_path = os.path.join(d_name, slug + ".meta")
-        with codecs.open(meta_path, "wb+", "utf8") as fd:
-            if onefile:
-                fd.write('%s\n' % title)
-                fd.write('%s\n' % slug)
-                fd.write('%s\n' % date)
-                fd.write('%s\n' % tags)
-        print("Your post's metadata is at: ", meta_path)
         with codecs.open(path, "wb+", "utf8") as fd:
-            fd.write("""{
- "metadata": {
-  "name": "%s"
- },
- "nbformat": 3,
- "nbformat_minor": 0,
- "worksheets": [
-  {
-   "cells": [
-    {
-     "cell_type": "code",
-     "collapsed": false,
-     "input": [],
-     "language": "python",
-     "metadata": {},
-     "outputs": []
-    }
-   ],
-   "metadata": {}
-  }
- ]
-}""" % slug)
+            if onefile:
+                fd.write('<!-- \n')
+                for k, v in metadata.items():
+                    fd.write('.. {0}: {1}\n'.format(k, v))
+                fd.write('-->\n\n')
+            fd.write("\nWrite your post here.")

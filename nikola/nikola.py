@@ -69,12 +69,19 @@ class Nikola(object):
 
     Takes a site config as argument on creation.
     """
+    EXTRA_PLUGINS = [
+        'planetoid',
+        'ipynb',
+        'local_search',
+        'render_mustache',
+    ]
 
     def __init__(self, **config):
         """Setup proper environment for running tasks."""
 
         self.global_data = {}
         self.posts_per_year = defaultdict(list)
+        self.posts_per_month = defaultdict(list)
         self.posts_per_tag = defaultdict(list)
         self.timeline = []
         self.pages = []
@@ -91,14 +98,17 @@ class Nikola(object):
             'ARCHIVE_PATH': "",
             'ARCHIVE_FILENAME': "archive.html",
             'CACHE_FOLDER': 'cache',
+            'CODE_COLOR_SCHEME': 'default',
             'COMMENTS_IN_GALLERIES': False,
             'COMMENTS_IN_STORIES': False,
             'CONTENT_FOOTER': '',
+            'CREATE_MONTHLY_ARCHIVE': False,
             'DATE_FORMAT': '%Y-%m-%d %H:%M',
             'DEFAULT_LANG': "en",
             'DEPLOY_COMMANDS': [],
             'DISABLED_PLUGINS': (),
             'DISQUS_FORUM': 'nikolademo',
+            'ENABLED_EXTRAS': (),
             'EXTRA_HEAD_DATA': '',
             'FAVICONS': {},
             'FILE_METADATA_REGEXP': None,
@@ -140,6 +150,7 @@ class Nikola(object):
             'SEARCH_FORM': '',
             'SLUG_TAG_PATH': True,
             'STORY_INDEX': False,
+            'STRIP_INDEX_HTML': False,
             'TAG_PATH': 'categories',
             'TAG_PAGES_ARE_INDEXES': False,
             'THEME': 'site',
@@ -170,6 +181,9 @@ class Nikola(object):
                 print("WARNING: You should configure SITE_URL instead of BLOG_URL")
                 self.config['SITE_URL'] = self.config['BLOG_URL']
 
+        self.default_lang = self.config['DEFAULT_LANG']
+        self.translations = self.config['TRANSLATIONS']
+
         # BASE_URL defaults to SITE_URL
         if 'BASE_URL' not in self.config:
             self.config['BASE_URL'] = self.config.get('SITE_URL')
@@ -191,23 +205,28 @@ class Nikola(object):
 
         self.commands = {}
         # Activate all command plugins
-        for pluginInfo in self.plugin_manager.getPluginsOfCategory("Command"):
-            if pluginInfo.name in self.config['DISABLED_PLUGINS']:
-                self.plugin_manager.removePluginFromCategory(pluginInfo, "Command")
+        for plugin_info in self.plugin_manager.getPluginsOfCategory("Command"):
+            if (plugin_info.name in self.config['DISABLED_PLUGINS']
+                or (plugin_info.name in self.EXTRA_PLUGINS and
+                    plugin_info.name not in self.config['ENABLED_EXTRAS'])):
+                self.plugin_manager.removePluginFromCategory(plugin_info, "Command")
                 continue
-            self.plugin_manager.activatePluginByName(pluginInfo.name)
-            pluginInfo.plugin_object.set_site(self)
-            pluginInfo.plugin_object.short_help = pluginInfo.description
-            self.commands[pluginInfo.name] = pluginInfo.plugin_object
+
+            self.plugin_manager.activatePluginByName(plugin_info.name)
+            plugin_info.plugin_object.set_site(self)
+            plugin_info.plugin_object.short_help = plugin_info.description
+            self.commands[plugin_info.name] = plugin_info.plugin_object
 
         # Activate all task plugins
         for task_type in ["Task", "LateTask"]:
-            for pluginInfo in self.plugin_manager.getPluginsOfCategory(task_type):
-                if pluginInfo.name in self.config['DISABLED_PLUGINS']:
-                    self.plugin_manager.removePluginFromCategory(pluginInfo, task_type)
+            for plugin_info in self.plugin_manager.getPluginsOfCategory(task_type):
+                if (plugin_info.name in self.config['DISABLED_PLUGINS']
+                    or (plugin_info.name in self.EXTRA_PLUGINS and
+                        plugin_info.name not in self.config['ENABLED_EXTRAS'])):
+                    self.plugin_manager.removePluginFromCategory(plugin_info, task_type)
                     continue
-                self.plugin_manager.activatePluginByName(pluginInfo.name)
-                pluginInfo.plugin_object.set_site(self)
+                self.plugin_manager.activatePluginByName(plugin_info.name)
+                plugin_info.plugin_object.set_site(self)
 
         # set global_context for template rendering
         self.GLOBAL_CONTEXT = {
@@ -249,7 +268,11 @@ class Nikola(object):
             'CONTENT_FOOTER')
         self.GLOBAL_CONTEXT['rss_path'] = self.config.get('RSS_PATH')
         self.GLOBAL_CONTEXT['rss_link'] = self.config.get('RSS_LINK')
-        self.GLOBAL_CONTEXT['sidebar_links'] = self.config.get('SIDEBAR_LINKS')
+
+        self.GLOBAL_CONTEXT['sidebar_links'] = utils.Functionary(list, self.config['DEFAULT_LANG'])
+        for k, v in self.config.get('SIDEBAR_LINKS', {}).items():
+            self.GLOBAL_CONTEXT['sidebar_links'][k] = v
+
         self.GLOBAL_CONTEXT['twitter_card'] = self.config.get(
             'TWITTER_CARD', {})
         self.GLOBAL_CONTEXT['extra_head_data'] = self.config.get('EXTRA_HEAD_DATA')
@@ -290,10 +313,10 @@ class Nikola(object):
         self.compilers = {}
         self.inverse_compilers = {}
 
-        for pluginInfo in self.plugin_manager.getPluginsOfCategory(
+        for plugin_info in self.plugin_manager.getPluginsOfCategory(
                 "PageCompiler"):
-            self.compilers[pluginInfo.name] = \
-                pluginInfo.plugin_object.compile_html
+            self.compilers[plugin_info.name] = \
+                plugin_info.plugin_object.compile_html
 
     def get_compiler(self, source_name):
         """Get the correct compiler for a post from `conf.post_compilers`
@@ -403,7 +426,20 @@ class Nikola(object):
         with open(output_name, "wb+") as post_file:
             post_file.write(data)
 
-    def path(self, kind, name, lang, is_link=False):
+    def current_lang(self):  # FIXME: this is duplicated, turn into a mixin
+        """Return the currently set locale, if it's one of the
+        available translations, or default_lang."""
+        lang = utils.LocaleBorg().current_lang
+        if lang:
+            if lang in self.translations:
+                return lang
+            lang = lang.split('_')[0]
+            if lang in self.translations:
+                return lang
+        # whatever
+        return self.default_lang
+
+    def path(self, kind, name, lang=None, is_link=False):
         """Build the path to a certain kind of page.
 
         kind is one of:
@@ -427,6 +463,9 @@ class Nikola(object):
         platform's separator.
         (ex: "archive\\index.html")
         """
+
+        if lang is None:
+            lang = self.current_lang()
 
         path = []
 
@@ -476,7 +515,11 @@ class Nikola(object):
             path = [_f for _f in [self.config['LISTINGS_FOLDER'], name +
                                   '.html'] if _f]
         if is_link:
-            return '/' + ('/'.join(path))
+            link = '/' + ('/'.join(path))
+            if self.config['STRIP_INDEX_HTML'] and link.endswith('/index.html'):
+                return link[:-10]
+            else:
+                return link
         else:
             return os.path.join(*path)
 
@@ -539,12 +582,14 @@ class Nikola(object):
         def add_gzipped_copies(task):
             if not self.config['GZIP_FILES']:
                 return None
+            if task.get('name') is None:
+                return None
             gzip_task = {
                 'file_dep': [],
                 'targets': [],
                 'actions': [],
                 'basename': 'gzip',
-                'name': task.get('name', 'unknown'),
+                'name': task.get('name') + '.gz',
                 'clean': True,
             }
             targets = task.get('targets', [])
@@ -608,7 +653,18 @@ class Nikola(object):
                 dir_glob = os.path.join(dirpath, os.path.basename(wildcard))
                 dest_dir = os.path.normpath(os.path.join(destination,
                                             os.path.relpath(dirpath, dirname)))
-                for base_path in glob.glob(dir_glob):
+                full_list = glob.glob(dir_glob)
+                # Now let's look for things that are not in default_lang
+                for lang in self.config['TRANSLATIONS'].keys():
+                    lang_glob = dir_glob + "." + lang
+                    translated_list = glob.glob(lang_glob)
+                    for fname in translated_list:
+                        orig_name = os.path.splitext(fname)[0]
+                        if orig_name in full_list:
+                            continue
+                        full_list.append(orig_name)
+
+                for base_path in full_list:
                     post = Post(
                         base_path,
                         self.config['CACHE_FOLDER'],
@@ -620,7 +676,9 @@ class Nikola(object):
                         self.MESSAGES,
                         template_name,
                         self.config['FILE_METADATA_REGEXP'],
+                        self.config['STRIP_INDEX_HTML'],
                         tzinfo,
+                        self.config['HIDE_UNTRANSLATED_POSTS'],
                     )
                     for lang, langpath in list(
                             self.config['TRANSLATIONS'].items()):
@@ -636,7 +694,9 @@ class Nikola(object):
                     if post.use_in_feeds:
                         self.posts_per_year[
                             str(post.date.year)].append(post.post_name)
-                        for tag in post.tags:
+                        self.posts_per_month[
+                            '{0}/{1:02d}'.format(post.date.year, post.date.month)].append(post.post_name)
+                        for tag in post.alltags:
                             self.posts_per_tag[tag].append(post.post_name)
                     else:
                         self.pages.append(post)
@@ -683,7 +743,7 @@ class Nikola(object):
         deps_dict['comments'] = context['enable_comments']
 
         task = {
-            'name': output_name,
+            'name': os.path.normpath(output_name),
             'file_dep': deps,
             'targets': [output_name],
             'actions': [(self.render_template, [post.template_name,
@@ -714,7 +774,7 @@ class Nikola(object):
                                  posts]
         deps_context["global"] = self.GLOBAL_CONTEXT
         task = {
-            'name': output_name,
+            'name': os.path.normpath(output_name),
             'targets': [output_name],
             'file_dep': deps,
             'actions': [(self.render_template, [template_name, output_name,
@@ -728,6 +788,7 @@ class Nikola(object):
 
 def s_l(lang):
     """A set_locale that uses utf8 encoding and returns ''."""
+    utils.LocaleBorg().current_lang = lang
     try:
         locale.setlocale(locale.LC_ALL, (lang, "utf8"))
     except Exception:

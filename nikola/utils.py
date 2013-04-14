@@ -66,7 +66,7 @@ __all__ = ['get_theme_path', 'get_theme_chain', 'load_messages', 'copy_tree',
            'generic_rss_renderer', 'copy_file', 'slugify', 'unslugify',
            'to_datetime', 'apply_filters', 'config_changed', 'get_crumbs',
            'get_asset_path', '_reload', 'unicode_str', 'bytes_str',
-           'unichr', 'Functionary']
+           'unichr', 'Functionary', 'LocaleBorg']
 
 
 class Functionary(defaultdict):
@@ -404,6 +404,15 @@ def to_datetime(value, tzinfo=None):
             return tzinfo.localize(dt)
         except ValueError:
             pass
+    # So, let's try dateutil
+    try:
+        from dateutil import parser
+        dt = parser.parse(value)
+        if tzinfo is None:
+            return dt
+        return tzinfo.localize(dt)
+    except ImportError:
+        raise ValueError('Unrecognized date/time: {0!r}, try installing dateutil...'.format(value))
     raise ValueError('Unrecognized date/time: {0!r}'.format(value))
 
 
@@ -420,7 +429,7 @@ def apply_filters(task, filters):
             if isinstance(key, (tuple, list)):
                 if ext in key:
                     return value
-            elif isinstance(key, (str, bytes)):
+            elif isinstance(key, (bytes_str, unicode_str)):
                 if ext == key:
                     return value
             else:
@@ -524,3 +533,12 @@ def get_asset_path(path, themes, files_folders={'files': ''}):
 
     # whatever!
     return None
+
+
+class LocaleBorg:
+    __shared_state = {
+        'current_lang': None
+    }
+
+    def __init__(self):
+        self.__dict__ = self.__shared_state

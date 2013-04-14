@@ -29,10 +29,11 @@ import os
 from nikola.plugin_categories import Command
 
 
-class Deploy(Command):
+class Console(Command):
     """Start debugging console."""
     name = "console"
     shells = ['ipython', 'bpython', 'plain']
+    doc_purpose = "Start an interactive python console with access to your site and configuration."
 
     def ipython(self):
         """IPython shell."""
@@ -59,8 +60,9 @@ class Deploy(Command):
             import bpython
             SITE = Nikola(**conf.__dict__)
             SITE.scan_posts()
+            gl = {'conf': conf, 'SITE': SITE, 'Nikola': Nikola}
             bpython.embed(banner='Nikola Console (conf = configuration, SITE '
-                          '= site engine)')
+                          '= site engine)', locals_=gl)
 
     def plain(self):
         """Plain Python shell."""
