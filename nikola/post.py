@@ -47,8 +47,8 @@ class Post(object):
     def __init__(
         self, source_path, cache_folder, destination, use_in_feeds,
         translations, default_lang, base_url, messages, template_name,
-        file_metadata_regexp=None, strip_index_html=False, tzinfo=None,
-        skip_untranslated=False,
+        file_metadata_regexp=None, strip_indexes=False, index_file='index.html',
+        tzinfo=None, skip_untranslated=False, pretty_urls=False,
     ):
         """Initialize post.
 
@@ -62,7 +62,9 @@ class Post(object):
         self.base_url = base_url
         self.is_draft = False
         self.is_mathjax = False
-        self.strip_index_html = strip_index_html
+        self.strip_indexes = strip_indexes
+        self.index_file = index_file
+        self.pretty_urls = pretty_urls
         self.source_path = source_path  # posts/blah.txt
         self.post_name = os.path.splitext(source_path)[0]  # posts/blah
         # cache/posts/blah.html
@@ -112,20 +114,32 @@ class Post(object):
         self.date = to_datetime(self.meta[default_lang]['date'], tzinfo)
 
         is_draft = False
+        is_retired = False
         self._tags = {}
         for lang in self.translated_to:
             self._tags[lang] = [x.strip() for x in self.meta[lang]['tags'].split(',')]
             self._tags[lang] = [t for t in self._tags[lang] if t]
             if 'draft' in self._tags[lang]:
                 is_draft = True
-                self._tags['lang'].remove('draft')
+                self._tags[lang].remove('draft')
+            if 'retired' in self._tags[lang]:
+                is_retired = True
+                self._tags[lang].remove('retired')
 
         # While draft comes from the tags, it's not really a tag
-        self.use_in_feeds = use_in_feeds and not is_draft
         self.is_draft = is_draft
+        self.use_in_feeds = use_in_feeds and not is_draft and not is_retired
 
         # If mathjax is a tag, then enable mathjax rendering support
         self.is_mathjax = 'mathjax' in self.tags
+
+    def _has_pretty_url(self, lang):
+        if self.pretty_urls and \
+                self.meta[lang].get('pretty_url', '') != 'False' and \
+                self.meta[lang]['slug'] != 'index':
+            return True
+        else:
+            return False
 
     @property
     def alltags(self):
@@ -157,7 +171,7 @@ class Post(object):
             rv = rv._prev_post
         return rv
 
-    @prev_post.setter
+    @prev_post.setter  # NOQA
     def prev_post(self, v):
         self._prev_post = v
 
@@ -173,7 +187,7 @@ class Post(object):
             rv = rv._next_post
         return rv
 
-    @next_post.setter
+    @next_post.setter  # NOQA
     def next_post(self, v):
         self._next_post = v
 
@@ -290,7 +304,6 @@ class Post(object):
         file_name = self._translated_file_path(lang)
         with codecs.open(file_name, "r", "utf8") as post_file:
             data = post_file.read().strip()
-
         try:
             document = lxml.html.document_fromstring(data)
         except lxml.etree.ParserError as e:
@@ -301,6 +314,16 @@ class Post(object):
             raise(e)
         document.make_links_absolute(self.permalink(lang=lang))
         data = lxml.html.tostring(document, encoding='unicode')
+        # data here is a full HTML doc, including HTML and BODY tags
+        # which is not ideal (Issue #464)
+        try:
+            body = document.body
+            data = (body.text or '') + ''.join(
+                [lxml.html.tostring(child, encoding='unicode')
+                    for child in body.iterchildren()])
+        except IndexError:  # No body there, it happens sometimes
+            pass
+
         if teaser_only:
             teaser = TEASER_REGEXP.split(data)[0]
             if teaser != data:
@@ -317,8 +340,12 @@ class Post(object):
         return data
 
     def destination_path(self, lang, extension='.html'):
-        path = os.path.join(self.translations[lang],
-                            self.folder, self.meta[lang]['slug'] + extension)
+        if self._has_pretty_url(lang):
+            path = os.path.join(self.translations[lang],
+                                self.folder, self.meta[lang]['slug'], 'index' + extension)
+        else:
+            path = os.path.join(self.translations[lang],
+                                self.folder, self.meta[lang]['slug'] + extension)
         return path
 
     def permalink(self, lang=None, absolute=False, extension='.html'):
@@ -327,15 +354,19 @@ class Post(object):
 
         pieces = self.translations[lang].split(os.sep)
         pieces += self.folder.split(os.sep)
-        pieces += [self.meta[lang]['slug'] + extension]
+        if self._has_pretty_url(lang):
+            pieces += [self.meta[lang]['slug'], 'index' + extension]
+        else:
+            pieces += [self.meta[lang]['slug'] + extension]
         pieces = [_f for _f in pieces if _f and _f != '.']
         if absolute:
             pieces = [self.base_url] + pieces
         else:
             pieces = [""] + pieces
         link = "/".join(pieces)
-        if self.strip_index_html and link.endswith('/index.html'):
-            return link[:-10]
+        index_len = len(self.index_file)
+        if self.strip_indexes and link[-(1 + index_len):] == '/' + self.index_file:
+            return link[:-index_len]
         else:
             return link
 

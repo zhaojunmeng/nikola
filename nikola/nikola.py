@@ -41,7 +41,7 @@ import lxml.html
 from yapsy.PluginManager import PluginManager
 import pytz
 
-if os.getenv('DEBUG'):
+if os.getenv('NIKOLA_DEBUG'):
     import logging
     logging.basicConfig(level=logging.DEBUG)
 else:
@@ -119,6 +119,7 @@ class Nikola(object):
             'GZIP_EXTENSIONS': ('.txt', '.htm', '.html', '.css', '.js', '.json'),
             'HIDE_UNTRANSLATED_POSTS': False,
             'INDEX_DISPLAY_POST_COUNT': 10,
+            'INDEX_FILE': 'index.html',
             'INDEX_TEASERS': False,
             'INDEXES_TITLE': "",
             'INDEXES_PAGES': "",
@@ -143,6 +144,7 @@ class Nikola(object):
                 ("posts/*.txt", "posts", "post.tmpl", True),
                 ("stories/*.txt", "stories", "story.tmpl", False),
             ),
+            'PRETTY_URLS': False,
             'REDIRECTIONS': [],
             'RSS_LINK': None,
             'RSS_PATH': '',
@@ -150,7 +152,8 @@ class Nikola(object):
             'SEARCH_FORM': '',
             'SLUG_TAG_PATH': True,
             'STORY_INDEX': False,
-            'STRIP_INDEX_HTML': False,
+            'STRIP_INDEXES': False,
+            'SITEMAP_INCLUDE_FILELESS_DIRS': True,
             'TAG_PATH': 'categories',
             'TAG_PAGES_ARE_INDEXES': False,
             'THEME': 'site',
@@ -164,6 +167,17 @@ class Nikola(object):
         }
 
         self.config.update(config)
+
+        # STRIP_INDEX_HTML config has been replaces with STRIP_INDEXES
+        # Port it if only the oldef form is there
+        if 'STRIP_INDEX_HTML' in config and 'STRIP_INDEXES' not in config:
+            print("WARNING: You should configure STRIP_INDEXES instead of STRIP_INDEX_HTML")
+            self.config['STRIP_INDEXES'] = config['STRIP_INDEX_HTML']
+
+        # PRETTY_URLS defaults to enabling STRIP_INDEXES unless explicitly disabled
+        if config.get('PRETTY_URLS', False) and 'STRIP_INDEXES' not in config:
+            self.config['STRIP_INDEXES'] = True
+
         self.config['TRANSLATIONS'] = self.config.get('TRANSLATIONS',
                                                       {self.config['DEFAULT_'
                                                       'LANG']: ''})
@@ -196,11 +210,17 @@ class Nikola(object):
             "PageCompiler": PageCompiler,
         })
         self.plugin_manager.setPluginInfoExtension('plugin')
-        self.plugin_manager.setPluginPlaces([
-            str(os.path.join(os.path.dirname(__file__), 'plugins')),
-            str(os.path.join(os.getcwd(), 'plugins')),
-        ])
-
+        if sys.version_info[0] == 3:
+            places = [
+                os.path.join(os.path.dirname(__file__), 'plugins'),
+                os.path.join(os.getcwd(), 'plugins'),
+            ]
+        else:
+            places = [
+                os.path.join(os.path.dirname(__file__), utils.sys_encode('plugins')),
+                os.path.join(os.getcwd(), utils.sys_encode('plugins')),
+            ]
+        self.plugin_manager.setPluginPlaces(places)
         self.plugin_manager.collectPlugins()
 
         self.commands = {}
@@ -297,8 +317,8 @@ class Nikola(object):
                              "plugin\n".format(template_sys_name))
             sys.exit(1)
         self.template_system = pi.plugin_object
-        lookup_dirs = [os.path.join(utils.get_theme_path(name), "templates")
-                       for name in self.THEMES]
+        lookup_dirs = ['templates'] + [os.path.join(utils.get_theme_path(name), "templates")
+                                       for name in self.THEMES]
         self.template_system.set_directories(lookup_dirs,
                                              self.config['CACHE_FOLDER'])
 
@@ -316,7 +336,7 @@ class Nikola(object):
         for plugin_info in self.plugin_manager.getPluginsOfCategory(
                 "PageCompiler"):
             self.compilers[plugin_info.name] = \
-                plugin_info.plugin_object.compile_html
+                plugin_info.plugin_object
 
     def get_compiler(self, source_name):
         """Get the correct compiler for a post from `conf.post_compilers`
@@ -471,7 +491,8 @@ class Nikola(object):
 
         if kind == "tag_index":
             path = [_f for _f in [self.config['TRANSLATIONS'][lang],
-                                  self.config['TAG_PATH'], 'index.html'] if _f]
+                                  self.config['TAG_PATH'],
+                                  self.config['INDEX_FILE']] if _f]
         elif kind == "tag":
             if self.config['SLUG_TAG_PATH']:
                 name = utils.slugify(name)
@@ -491,11 +512,13 @@ class Nikola(object):
                                       'index-{0}.html'.format(name)] if _f]
             else:
                 path = [_f for _f in [self.config['TRANSLATIONS'][lang],
-                                      self.config['INDEX_PATH'], 'index.html']
+                                      self.config['INDEX_PATH'],
+                                      self.config['INDEX_FILE']]
                         if _f]
         elif kind == "post_path":
             path = [_f for _f in [self.config['TRANSLATIONS'][lang],
-                                  os.path.dirname(name), "index.html"] if _f]
+                                  os.path.dirname(name),
+                                  self.config['INDEX_FILE']] if _f]
         elif kind == "rss":
             path = [_f for _f in [self.config['TRANSLATIONS'][lang],
                                   self.config['RSS_PATH'], 'rss.xml'] if _f]
@@ -503,21 +526,23 @@ class Nikola(object):
             if name:
                 path = [_f for _f in [self.config['TRANSLATIONS'][lang],
                                       self.config['ARCHIVE_PATH'], name,
-                                      'index.html'] if _f]
+                                      self.config['INDEX_FILE']] if _f]
             else:
                 path = [_f for _f in [self.config['TRANSLATIONS'][lang],
                                       self.config['ARCHIVE_PATH'],
                                       self.config['ARCHIVE_FILENAME']] if _f]
         elif kind == "gallery":
             path = [_f for _f in [self.config['GALLERY_PATH'], name,
-                                  'index.html'] if _f]
+                                  self.config['INDEX_FILE']] if _f]
         elif kind == "listing":
             path = [_f for _f in [self.config['LISTINGS_FOLDER'], name +
                                   '.html'] if _f]
         if is_link:
             link = '/' + ('/'.join(path))
-            if self.config['STRIP_INDEX_HTML'] and link.endswith('/index.html'):
-                return link[:-10]
+            index_len = len(self.config['INDEX_FILE'])
+            if self.config['STRIP_INDEXES'] and \
+                    link[-(1 + index_len):] == '/' + self.config['INDEX_FILE']:
+                return link[:-index_len]
             else:
                 return link
         else:
@@ -676,9 +701,11 @@ class Nikola(object):
                         self.MESSAGES,
                         template_name,
                         self.config['FILE_METADATA_REGEXP'],
-                        self.config['STRIP_INDEX_HTML'],
+                        self.config['STRIP_INDEXES'],
+                        self.config['INDEX_FILE'],
                         tzinfo,
                         self.config['HIDE_UNTRANSLATED_POSTS'],
+                        self.config['PRETTY_URLS'],
                     )
                     for lang, langpath in list(
                             self.config['TRANSLATIONS'].items()):
@@ -729,8 +756,9 @@ class Nikola(object):
             context['enable_comments'] = True
         else:
             context['enable_comments'] = self.config['COMMENTS_IN_STORIES']
+        extension = self.get_compiler(post.source_path).extension()
         output_name = os.path.join(self.config['OUTPUT_FOLDER'],
-                                   post.destination_path(lang))
+                                   post.destination_path(lang, extension))
         deps_dict = copy(context)
         deps_dict.pop('post')
         if post.prev_post:
@@ -741,6 +769,8 @@ class Nikola(object):
         deps_dict['TRANSLATIONS'] = self.config['TRANSLATIONS']
         deps_dict['global'] = self.GLOBAL_CONTEXT
         deps_dict['comments'] = context['enable_comments']
+        if post:
+            deps_dict['post_translations'] = post.translated_to
 
         task = {
             'name': os.path.normpath(output_name),

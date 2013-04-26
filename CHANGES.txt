@@ -1,5 +1,34 @@
-New in Master
+New in master
 =============
+
+Features
+--------
+
+* Jinja-default and jinja-site themes now automatically generated from the Mako versions.
+* New Persian translation
+* RSS feed now includes post tags (Issue #462)
+* Experimental generic RSS/Atom importer (Issue #347)
+* PHP support (Issue #313)
+* New PRETTY_URLS option (generates slug/index.html instead of slug.html) (Issue #429)
+* Added "templates/" folder to template path.
+* Keyword metadata support in post pages (Issue #451)
+
+Bugfixes
+--------
+
+* Handle non-ascii path in bundles (Issue #473)
+* Handle non-ascii path in plugin loader (Issue #471)
+* Handle non-ascii arguments in main (Issue #470)
+* Make sitemap depend on file dates (reported by Kay Hayen)
+* Better support for non-ascii urlencoded paths in the wp importer (Issue #468)
+* Avoid crashing if user does a deploy with no commands
+* Strip HTML and BODY tags in Post.text() (Issue #464)
+* -f option broken in HTML compiler (Issue #463)
+* Don't map empty folders, map folders with index.html, and don't map index.html (Issue #430)
+* Wordpress import: write correct redirections for URLs not ending in an / (Issue #459)
+
+New in 5.4.4
+============
 
 Features
 --------
@@ -8,10 +37,13 @@ Features
 * Nikola check exists with 1 if there is an error
 * New HIDE_UNTRANSLATED_POSTS option that ensures you don't have mixed-language pages (Issue #373)
 * New theme "site-planetoid" for use with the planetoid plugin.
+* New 'retired' tag for posts that should no longer be in feeds.
 
 Bugfixes
 --------
 
+* Added post data as a uptodate check for mustache (Issue #456)
+* Rebuild post pages when the post's translation list changes (Issue #458)
 * Handle "-h" (Issue #460)
 * Added correct help for console command (Issue #460)
 * Escape twittercard data (Issue #452)

@@ -24,6 +24,8 @@
 
 """Implementation of compile_html based on markdown."""
 
+from __future__ import unicode_literals
+
 import os
 import shutil
 import codecs
@@ -31,8 +33,8 @@ import codecs
 from nikola.plugin_categories import PageCompiler
 
 
-class CompileHtml(PageCompiler):
-    """Compile HTML into HTML."""
+class CompilePhp(PageCompiler):
+    """Compile PHP into PHP."""
 
     name = "html"
 
@@ -42,7 +44,6 @@ class CompileHtml(PageCompiler):
         except Exception:
             pass
         shutil.copyfile(source, dest)
-        return True
 
     def create_post(self, path, onefile=False, **kw):
         metadata = {}
@@ -58,3 +59,6 @@ class CompileHtml(PageCompiler):
                     fd.write('.. {0}: {1}\n'.format(k, v))
                 fd.write('-->\n\n')
             fd.write("\n<p>Write your post here.</p>")
+
+    def extension(self):
+        return ".php"

@@ -11,7 +11,7 @@ The Nikola Handbook
 All You Need to Know
 --------------------
 
-After you have Nikola installed:
+After you have Nikola `installed <#installing-nikola>`_:
 
 Create a empty site:
     ``nikola init mysite``
@@ -83,7 +83,7 @@ Getting Help
 ------------
 
 * Feel free to contact me at ralsina@netmanagers.com.ar for questions about Nikola.
-* You can file bugs at `the issue tracker <http://code.google.com/p/nikola-generator/issues/list>`__
+* You can file bugs at `the issue tracker <https://github.com/ralsina/nikola-site/issues>`__
 * You can discuss Nikola at the `nikola-discuss google group <http://groups.google.com/group/nikola-discuss>`_
 * You can subscribe to `the Nikola Blog <http://nikola.ralsina.com.ar/blog>`_
 * You can follow `Nikola on Twitter <https://twitter.com/#!/nikolagenerator>`_
@@ -411,6 +411,9 @@ supports them (for example: ``.. author: John Doe``)
 
            .. template: story.tmpl
 
+       That template needs to either be part of the theme, or be placed in a ``templates/``
+       folder inside your site.
+
    password
        The post will be encrypted and invisible until the reader enters the password.
        Also, the post's sourcecode will not be available.
@@ -537,6 +540,12 @@ If you add a "draft" tag to a post, then it will not be shown in indexes and fee
 It *will* be compiled, and if you deploy it it *will* be made available, so use
 with care.
 
+Retired Posts
+~~~~~~~~~~~~~
+
+If you add a "retired" tag to a post, then it will not be shown in indexes and feeds.
+It *will* be compiled, and if you deploy it it *will* be made available, so it will
+not generate 404s for people who had linked to it.
 
 Creating a Page
 ---------------

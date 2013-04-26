@@ -31,8 +31,9 @@ import re
 
 try:
     from urlparse import urlparse
+    from urllib import unquote
 except ImportError:
-    from urllib.parse import urlparse  # NOQA
+    from urllib.parse import urlparse, unquote  # NOQA
 
 from lxml import etree, html
 from mako.template import Template
@@ -176,6 +177,9 @@ class CommandImportWordpress(Command):
     def configure_redirections(url_map):
         redirections = []
         for k, v in url_map.items():
+            if not k[-1] == '/':
+                k = k + '/'
+
             # remove the initial "/" because src is a relative file path
             src = (urlparse(k).path + 'index.html')[1:]
             dst = (urlparse(v).path)
@@ -323,12 +327,14 @@ class CommandImportWordpress(Command):
         # link is something like http://foo.com/2012/09/01/hello-world/
         # So, take the path, utils.slugify it, and that's our slug
         link = get_text_tag(item, 'link', None)
-        path = urlparse(link).path
+        #import pdb; pdb.set_trace()
+        path = unquote(urlparse(link).path)
 
         # In python 2, path is a str. slug requires a unicode
-        # object. Luckily, paths are also ASCII
+        # object. According to wikipedia, unquoted strings will
+        # usually be UTF8
         if isinstance(path, utils.bytes_str):
-            path = path.decode('ASCII')
+            path = path.decode('utf8')
         slug = utils.slugify(path)
         if not slug:  # it happens if the post has no "nice" URL
             slug = get_text_tag(

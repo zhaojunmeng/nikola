@@ -66,7 +66,24 @@ __all__ = ['get_theme_path', 'get_theme_chain', 'load_messages', 'copy_tree',
            'generic_rss_renderer', 'copy_file', 'slugify', 'unslugify',
            'to_datetime', 'apply_filters', 'config_changed', 'get_crumbs',
            'get_asset_path', '_reload', 'unicode_str', 'bytes_str',
-           'unichr', 'Functionary', 'LocaleBorg']
+           'unichr', 'Functionary', 'LocaleBorg', 'sys_encode', 'sys_decode']
+
+
+ENCODING = sys.getfilesystemencoding() or sys.stdin.encoding
+
+
+def sys_encode(thing):
+    """Return bytes encoded in the system's encoding."""
+    if isinstance(thing, unicode_str):
+        return thing.encode(ENCODING)
+    return thing
+
+
+def sys_decode(thing):
+    """Returns unicode."""
+    if isinstance(thing, bytes_str):
+        return thing.decode(ENCODING)
+    return thing
 
 
 class Functionary(defaultdict):
@@ -259,6 +276,7 @@ def generic_rss_renderer(lang, title, link, description, timeline, output_path,
             # PyRSS2Gen's pubDate is GMT time.
             'pubDate': (post.date if post.date.tzinfo is None else
                         post.date.astimezone(pytz.timezone('UTC'))),
+            'categories': post._tags.get(lang, []),
         }
         items.append(rss.RSSItem(**args))
     rss_obj = rss.RSS2(
@@ -522,14 +540,14 @@ def get_asset_path(path, themes, files_folders={'files': ''}):
             path
         )
         if os.path.isfile(candidate):
-            return os.path.relpath(candidate, os.getcwd())
+            return os.path.relpath(candidate, sys_decode(os.getcwd()))
     for src, rel_dst in files_folders.items():
         candidate = os.path.join(
             src,
             os.path.relpath(path, rel_dst)
         )
         if os.path.isfile(candidate):
-            return os.path.relpath(candidate, os.getcwd())
+            return os.path.relpath(candidate, sys_decode(os.getcwd()))
 
     # whatever!
     return None

@@ -92,7 +92,7 @@ class Galleries(Task):
             output_gallery = os.path.dirname(os.path.join(
                 kw["output_folder"], self.site.path("gallery", gallery_name,
                                                     None)))
-            output_name = os.path.join(output_gallery, "index.html")
+            output_name = os.path.join(output_gallery, self.site.config['INDEX_FILE'])
             if not os.path.isdir(output_gallery):
                 yield {
                     'basename': str('render_galleries'),
@@ -238,7 +238,7 @@ class Galleries(Task):
                 str(hashlib.sha224(index_path.encode('utf-8')).hexdigest() +
                     '.html'))
             if os.path.exists(index_path):
-                compile_html = self.site.get_compiler(index_path)
+                compile_html = self.site.get_compiler(index_path).compile_html
                 yield {
                     'basename': str('render_galleries'),
                     'name': index_dst_path,
