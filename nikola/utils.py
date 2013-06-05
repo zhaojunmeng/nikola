@@ -45,6 +45,7 @@ except ImportError:
 
 import pytz
 
+
 if sys.version_info[0] == 3:
     # Python 3
     bytes_str = bytes
@@ -65,7 +66,7 @@ import PyRSS2Gen as rss
 __all__ = ['get_theme_path', 'get_theme_chain', 'load_messages', 'copy_tree',
            'generic_rss_renderer', 'copy_file', 'slugify', 'unslugify',
            'to_datetime', 'apply_filters', 'config_changed', 'get_crumbs',
-           'get_asset_path', '_reload', 'unicode_str', 'bytes_str',
+           'get_tzname', 'get_asset_path', '_reload', 'unicode_str', 'bytes_str',
            'unichr', 'Functionary', 'LocaleBorg', 'sys_encode', 'sys_decode']
 
 
@@ -131,7 +132,7 @@ class config_changed(tools.config_changed):
         if isinstance(self.config, str):
             return self.config
         elif isinstance(self.config, dict):
-            data = json.dumps(self.config, cls=CustomEncoder)
+            data = json.dumps(self.config, cls=CustomEncoder, sort_keys=True)
             if isinstance(data, str):  # pragma: no cover # python3
                 byte_data = data.encode("utf-8")
             else:
@@ -426,12 +427,38 @@ def to_datetime(value, tzinfo=None):
     try:
         from dateutil import parser
         dt = parser.parse(value)
-        if tzinfo is None:
+        if tzinfo is None or dt.tzinfo:
             return dt
         return tzinfo.localize(dt)
     except ImportError:
         raise ValueError('Unrecognized date/time: {0!r}, try installing dateutil...'.format(value))
     raise ValueError('Unrecognized date/time: {0!r}'.format(value))
+
+
+def get_tzname(dt):
+    """
+    Give a datetime value, find the name of the timezone
+    """
+    try:
+        from dateutil import tz
+    except ImportError:
+        raise ValueError('Unrecognized date/time: {0!r}, try installing dateutil...'.format(dt))
+
+    tzoffset = dt.strftime('%z')
+    for name in pytz.common_timezones:
+        timezone = tz.gettz(name)
+        now = dt.now(timezone)
+        offset = now.strftime('%z')
+        if offset == tzoffset:
+            return name
+    raise ValueError('Unrecognized date/time: {0!r}'.format(dt))
+
+
+def current_time(tzinfo=None):
+    dt = datetime.datetime.now()
+    if tzinfo is not None:
+        dt = tzinfo.localize(dt)
+    return dt
 
 
 def apply_filters(task, filters):

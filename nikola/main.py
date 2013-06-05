@@ -37,6 +37,8 @@ from doit.cmd_run import Run as DoitRun
 from .nikola import Nikola
 from .utils import _reload, sys_decode
 
+VERSION = "5.4.4"
+
 
 def main(args):
     sys.path.append('')
@@ -80,10 +82,11 @@ class NikolaTaskLoader(TaskLoader):
     def load_tasks(self, cmd, opt_values, pos_args):
         DOIT_CONFIG = {
             'reporter': ExecutedOnlyReporter,
-            'default_tasks': ['render_site'],
+            'default_tasks': ['render_site', 'post_render'],
         }
-        tasks = generate_tasks('render_site', self.nikola.gen_tasks())
-        return tasks, DOIT_CONFIG
+        tasks = generate_tasks('render_site', self.nikola.gen_tasks('render_site', "Task"))
+        latetasks = generate_tasks('post_render', self.nikola.gen_tasks('post_render', "LateTask"))
+        return tasks + latetasks, DOIT_CONFIG
 
 
 class DoitNikola(DoitMain):
@@ -121,3 +124,7 @@ class DoitNikola(DoitMain):
                       "existing Nikola site.")
                 return False
         super(DoitNikola, self).run(cmd_args)
+
+    @staticmethod
+    def print_version():
+        print("Nikola version %s" % VERSION)

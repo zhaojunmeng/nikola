@@ -83,7 +83,7 @@ Getting Help
 ------------
 
 * Feel free to contact me at ralsina@netmanagers.com.ar for questions about Nikola.
-* You can file bugs at `the issue tracker <https://github.com/ralsina/nikola-site/issues>`__
+* You can file bugs at `the issue tracker <https://github.com/ralsina/nikola/issues>`__
 * You can discuss Nikola at the `nikola-discuss google group <http://groups.google.com/group/nikola-discuss>`_
 * You can subscribe to `the Nikola Blog <http://nikola.ralsina.com.ar/blog>`_
 * You can follow `Nikola on Twitter <https://twitter.com/#!/nikolagenerator>`_
@@ -540,6 +540,9 @@ If you add a "draft" tag to a post, then it will not be shown in indexes and fee
 It *will* be compiled, and if you deploy it it *will* be made available, so use
 with care.
 
+Also if a post has a date in the future, it will not be shown in indexes until you rebuild after
+that date.
+
 Retired Posts
 ~~~~~~~~~~~~~
 
@@ -962,7 +965,7 @@ If you like Nikola, and want to start using it, but you have a Wordpress blog, N
 supports importing it. Here's the steps to do it:
 
 1) Get a XML dump of your site [#]_
-2) nikola import_wordpress -f mysite.wordpress.2012-12-20.xml
+2) nikola import_wordpress mysite.wordpress.2012-12-20.xml
 
 After some time, this will crate a ``new_site`` folder with all your data. It currently supports
 the following:
@@ -1000,7 +1003,7 @@ Importing To A Custom Location Or Into An Existing Site
 It is possible to either import into a location you desire or into an already existing Nikola site.
 To do so you can specify a location after the dump.::
 
-    $ nikola import_wordpress -f mysite.wordpress.2012-12-20.xml -o import_location
+    $ nikola import_wordpress  mysite.wordpress.2012-12-20.xml -o import_location
 
 With this command Nikola will import into the folder ``import_location``.
 
@@ -1084,8 +1087,7 @@ search will be performed client side.
 
 This plugin implements a Tipue-based local search for your site.
 
-To use it, copy task_localsearch.plugin and task_localsearch
-into a plugins/ folder in your nikola site.
+To use it, enable local_search in ENABLED_EXTRAS in your sites conf.py
 
 After you build your site, you will have several new files in assets/css and assets/js
 and a tipue_search.html that you can use as a basis for using this in your site.

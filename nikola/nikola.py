@@ -27,7 +27,6 @@ from __future__ import print_function, unicode_literals
 from collections import defaultdict
 from copy import copy
 import glob
-import gzip
 import locale
 import os
 import sys
@@ -55,6 +54,7 @@ from .plugin_categories import (
     LateTask,
     PageCompiler,
     Task,
+    TaskMultiplier,
     TemplateSystem,
 )
 
@@ -83,6 +83,7 @@ class Nikola(object):
         self.posts_per_year = defaultdict(list)
         self.posts_per_month = defaultdict(list)
         self.posts_per_tag = defaultdict(list)
+        self.post_per_file = {}
         self.timeline = []
         self.pages = []
         self._scanned = False
@@ -125,7 +126,9 @@ class Nikola(object):
             'INDEXES_PAGES': "",
             'INDEX_PATH': '',
             'LICENSE': '',
+            'LINK_CHECK_WHITELIST': [],
             'LISTINGS_FOLDER': 'listings',
+            'MARKDOWN_EXTENSIONS': ['fenced_code', 'codehilite'],
             'MAX_IMAGE_SIZE': 1280,
             'MATHJAX_CONFIG': '',
             'OLD_THEME_SUPPORT': True,
@@ -208,6 +211,7 @@ class Nikola(object):
             "LateTask": LateTask,
             "TemplateSystem": TemplateSystem,
             "PageCompiler": PageCompiler,
+            "TaskMultiplier": TaskMultiplier,
         })
         self.plugin_manager.setPluginInfoExtension('plugin')
         if sys.version_info[0] == 3:
@@ -245,6 +249,22 @@ class Nikola(object):
                         plugin_info.name not in self.config['ENABLED_EXTRAS'])):
                     self.plugin_manager.removePluginFromCategory(plugin_info, task_type)
                     continue
+                self.plugin_manager.activatePluginByName(plugin_info.name)
+                plugin_info.plugin_object.set_site(self)
+
+        # Activate all multiplier plugins
+        for plugin_info in self.plugin_manager.getPluginsOfCategory("TaskMultiplier"):
+            if (plugin_info.name in self.config['DISABLED_PLUGINS']
+                or (plugin_info.name in self.EXTRA_PLUGINS and
+                    plugin_info.name not in self.config['ENABLED_EXTRAS'])):
+                self.plugin_manager.removePluginFromCategory(plugin_info, task_type)
+                continue
+            self.plugin_manager.activatePluginByName(plugin_info.name)
+            plugin_info.plugin_object.set_site(self)
+
+        # Activate all required compiler plugins
+        for plugin_info in self.plugin_manager.getPluginsOfCategory("PageCompiler"):
+            if plugin_info.name in self.config["post_compilers"].keys():
                 self.plugin_manager.activatePluginByName(plugin_info.name)
                 plugin_info.plugin_object.set_site(self)
 
@@ -589,12 +609,7 @@ class Nikola(object):
             exists = os.stat(path).st_size > 0
         return exists
 
-    def gen_tasks(self):
-
-        def create_gzipped_copy(in_path, out_path):
-            with gzip.GzipFile(out_path, 'wb+') as outf:
-                with open(in_path, 'rb') as inf:
-                    outf.write(inf.read())
+    def gen_tasks(self, name, plugin_category):
 
         def flatten(task):
             if isinstance(task, dict):
@@ -604,57 +619,21 @@ class Nikola(object):
                     for ft in flatten(t):
                         yield ft
 
-        def add_gzipped_copies(task):
-            if not self.config['GZIP_FILES']:
-                return None
-            if task.get('name') is None:
-                return None
-            gzip_task = {
-                'file_dep': [],
-                'targets': [],
-                'actions': [],
-                'basename': 'gzip',
-                'name': task.get('name') + '.gz',
-                'clean': True,
-            }
-            targets = task.get('targets', [])
-            flag = False
-            for target in targets:
-                ext = os.path.splitext(target)[1]
-                if (ext.lower() in self.config['GZIP_EXTENSIONS'] and
-                        target.startswith(self.config['OUTPUT_FOLDER'])):
-                    flag = True
-                    gzipped = target + '.gz'
-                    gzip_task['file_dep'].append(target)
-                    gzip_task['targets'].append(gzipped)
-                    gzip_task['actions'].append((create_gzipped_copy, (target, gzipped)))
-            if not flag:
-                return None
-            return gzip_task
-
-        if self.config['GZIP_FILES']:
-            task_dep = ['gzip']
-        else:
-            task_dep = []
-        for pluginInfo in self.plugin_manager.getPluginsOfCategory("Task"):
+        task_dep = []
+        for pluginInfo in self.plugin_manager.getPluginsOfCategory(plugin_category):
             for task in flatten(pluginInfo.plugin_object.gen_tasks()):
-                gztask = add_gzipped_copies(task)
-                if gztask:
-                    yield gztask
                 yield task
-            if pluginInfo.plugin_object.is_default:
-                task_dep.append(pluginInfo.plugin_object.name)
-
-        for pluginInfo in self.plugin_manager.getPluginsOfCategory("LateTask"):
-            for task in pluginInfo.plugin_object.gen_tasks():
-                gztask = add_gzipped_copies(task)
-                if gztask:
-                    yield gztask
-                yield task
+                for multi in self.plugin_manager.getPluginsOfCategory("TaskMultiplier"):
+                    flag = False
+                    for task in multi.plugin_object.process(task):
+                        flag = True
+                        yield task
+                    if flag:
+                        task_dep.append(multi.plugin_object.name)
             if pluginInfo.plugin_object.is_default:
                 task_dep.append(pluginInfo.plugin_object.name)
         yield {
-            'name': b'all',
+            'name': name,
             'actions': None,
             'clean': True,
             'task_dep': task_dep
@@ -669,6 +648,7 @@ class Nikola(object):
         tzinfo = None
         if self.config['TIMEZONE'] is not None:
             tzinfo = pytz.timezone(self.config['TIMEZONE'])
+        current_time = utils.current_time(tzinfo)
         targets = set([])
         for wildcard, destination, template_name, use_in_feeds in \
                 self.config['post_pages']:
@@ -704,6 +684,7 @@ class Nikola(object):
                         self.config['STRIP_INDEXES'],
                         self.config['INDEX_FILE'],
                         tzinfo,
+                        current_time,
                         self.config['HIDE_UNTRANSLATED_POSTS'],
                         self.config['PRETTY_URLS'],
                     )
@@ -729,6 +710,9 @@ class Nikola(object):
                         self.pages.append(post)
                     if self.config['OLD_THEME_SUPPORT']:
                         post._add_old_metadata()
+                    self.post_per_file[post.destination_path(lang=lang)] = post
+                    self.post_per_file[post.destination_path(lang=lang, extension=post.source_ext())] = post
+
         for name, post in list(self.global_data.items()):
             self.timeline.append(post)
         self.timeline.sort(key=lambda p: p.date)

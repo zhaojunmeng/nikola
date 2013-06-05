@@ -33,7 +33,7 @@ import string
 
 import lxml.html
 
-from .utils import to_datetime, slugify, bytes_str, Functionary, LocaleBorg
+from .utils import (to_datetime, slugify, bytes_str, Functionary, LocaleBorg)
 
 __all__ = ['Post']
 
@@ -48,7 +48,7 @@ class Post(object):
         self, source_path, cache_folder, destination, use_in_feeds,
         translations, default_lang, base_url, messages, template_name,
         file_metadata_regexp=None, strip_indexes=False, index_file='index.html',
-        tzinfo=None, skip_untranslated=False, pretty_urls=False,
+        tzinfo=None, current_time=None, skip_untranslated=False, pretty_urls=False,
     ):
         """Initialize post.
 
@@ -61,6 +61,7 @@ class Post(object):
         self._next_post = None
         self.base_url = base_url
         self.is_draft = False
+        self.is_retired = False
         self.is_mathjax = False
         self.strip_indexes = strip_indexes
         self.index_file = index_file
@@ -113,6 +114,8 @@ class Post(object):
         # If timezone is set, build localized datetime.
         self.date = to_datetime(self.meta[default_lang]['date'], tzinfo)
 
+        self.publish_later = False if current_time is None else self.date >= current_time
+
         is_draft = False
         is_retired = False
         self._tags = {}
@@ -128,7 +131,9 @@ class Post(object):
 
         # While draft comes from the tags, it's not really a tag
         self.is_draft = is_draft
-        self.use_in_feeds = use_in_feeds and not is_draft and not is_retired
+        self.is_retired = is_retired
+        self.use_in_feeds = use_in_feeds and not is_draft and not is_retired \
+            and not self.publish_later
 
         # If mathjax is a tag, then enable mathjax rendering support
         self.is_mathjax = 'mathjax' in self.tags
@@ -305,7 +310,7 @@ class Post(object):
         with codecs.open(file_name, "r", "utf8") as post_file:
             data = post_file.read().strip()
         try:
-            document = lxml.html.document_fromstring(data)
+            document = lxml.html.fragment_fromstring(data, "body")
         except lxml.etree.ParserError as e:
             # if we don't catch this, it breaks later (Issue #374)
             if str(e) == "Document is empty":
@@ -327,7 +332,8 @@ class Post(object):
         if teaser_only:
             teaser = TEASER_REGEXP.split(data)[0]
             if teaser != data:
-                teaser_str = self.messages[lang]["Read more"] + '...'
+                teaser_str = TEASER_REGEXP.search(data).groups()[-1] or \
+                    self.messages[lang]["Read more"] + '...'
                 teaser += '<p><a href="{0}">{1}</a></p>'.format(
                     self.permalink(lang), teaser_str)
                 # This closes all open tags and sanitizes the broken HTML
@@ -339,13 +345,29 @@ class Post(object):
             data = content.text_content().strip()  # No whitespace wanted.
         return data
 
-    def destination_path(self, lang, extension='.html'):
+    def source_link(self, lang=None):
+        """Return absolute link to the post's source."""
+        return "/" + self.destination_path(
+            lang=lang,
+            extension=self.source_ext(),
+            sep='/')
+
+    def destination_path(self, lang=None, extension='.html', sep=os.sep):
+        """Destination path for this post, relative to output/.
+
+        If lang is not specified, it's the current language.
+        Extension is used in the path if specified.
+        """
+        if lang is None:
+            lang = self.current_lang()
         if self._has_pretty_url(lang):
             path = os.path.join(self.translations[lang],
                                 self.folder, self.meta[lang]['slug'], 'index' + extension)
         else:
             path = os.path.join(self.translations[lang],
                                 self.folder, self.meta[lang]['slug'] + extension)
+        if sep != os.sep:
+            path = path.replace(os.sep, sep)
         return path
 
     def permalink(self, lang=None, absolute=False, extension='.html'):
