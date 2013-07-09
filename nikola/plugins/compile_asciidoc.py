@@ -22,57 +22,30 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-"""Implementation of compile_html based on markdown."""
+"""Implementation of compile_html based on asciidoc.
 
-from __future__ import unicode_literals
+You will need, of course, to install asciidoc
+
+"""
 
 import codecs
 import os
 
-try:
-    from markdown import markdown
-
-    from nikola.plugins.compile_markdown.mdx_nikola import NikolaExtension
-    nikola_extension = NikolaExtension()
-
-    from nikola.plugins.compile_markdown.mdx_gist import GistExtension
-    gist_extension = GistExtension()
-
-    from nikola.plugins.compile_markdown.mdx_podcast import PodcastExtension
-    podcast_extension = PodcastExtension()
-
-except ImportError:
-    markdown = None  # NOQA
-    nikola_extension = None
-    gist_extension = None
-    podcast_extension = None
-
 from nikola.plugin_categories import PageCompiler
 
 
-class CompileMarkdown(PageCompiler):
-    """Compile markdown into HTML."""
+class CompileAsciiDoc(PageCompiler):
+    """Compile asciidoc into HTML."""
 
-    name = "markdown"
-    extensions = [gist_extension, nikola_extension, podcast_extension]
-    site = None
+    name = "asciidoc"
 
     def compile_html(self, source, dest, is_two_file=True):
-        if markdown is None:
-            raise Exception('To build this site, you need to install the '
-                            '"markdown" package.')
         try:
             os.makedirs(os.path.dirname(dest))
         except:
             pass
-        self.extensions += self.site.config.get("MARKDOWN_EXTENSIONS")
-        with codecs.open(dest, "w+", "utf8") as out_file:
-            with codecs.open(source, "r", "utf8") as in_file:
-                data = in_file.read()
-            if not is_two_file:
-                data = data.split('\n\n', 1)[-1]
-            output = markdown(data, self.extensions)
-            out_file.write(output)
+        cmd = "asciidoc -f html -s -o {0} {1}".format(dest, source)
+        os.system(cmd)
 
     def create_post(self, path, onefile=False, **kw):
         metadata = {}
@@ -83,8 +56,8 @@ class CompileMarkdown(PageCompiler):
             os.makedirs(os.path.dirname(path))
         with codecs.open(path, "wb+", "utf8") as fd:
             if onefile:
-                fd.write('<!-- \n')
+                fd.write("/////////////////////////////////////////////\n")
                 for k, v in metadata.items():
                     fd.write('.. {0}: {1}\n'.format(k, v))
-                fd.write('-->\n\n')
-            fd.write("Write your post here.")
+                fd.write("/////////////////////////////////////////////\n")
+            fd.write("\nWrite your post here.")

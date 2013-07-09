@@ -77,6 +77,7 @@ class Post(object):
         self.messages = messages
         self.skip_untranslated = skip_untranslated
         self._template_name = template_name
+        self.is_two_file = True
 
         default_metadata = get_meta(self, file_metadata_regexp)
 
@@ -302,7 +303,15 @@ class Post(object):
             return '.'.join((self.base_path, sorted(self.translated_to)[0]))
 
     def text(self, lang=None, teaser_only=False, strip_html=False):
-        """Read the post file for that language and return its contents."""
+        """Read the post file for that language and return its contents.
+
+        teaser_only=True breaks at the teaser marker and returns only the teaser.
+        strip_html=True removes HTML tags
+        lang=None uses the currently set locale
+
+        All links in the returned HTML will be relative.
+        The HTML returned is a bare fragment, not a full document.
+        """
 
         if lang is None:
             lang = self.current_lang()
@@ -456,8 +465,10 @@ def _get_metadata_from_file(meta_data):
     'FooBar'
     >>> str(g([".. title: FooBar"])["title"])
     'FooBar'
-    >>> 'title' in g(["",".. title: FooBar"])
+    >>> 'title' in g(["","",".. title: FooBar"])
     False
+    >>> 'title' in g(["",".. title: FooBar"])  # for #520
+    True
 
     """
     meta = {}
@@ -469,7 +480,11 @@ def _get_metadata_from_file(meta_data):
         string.punctuation)))
 
     for i, line in enumerate(meta_data):
-        if not line:
+        # txt2tags requires an empty line at the beginning
+        # and since we are here because it's a 1-file post
+        # let's be flexible on what we accept, so, skip empty
+        # first lines.
+        if not line and i > 0:
             break
         if 'title' not in meta:
             match = re_meta(line, 'title')
@@ -518,6 +533,12 @@ def get_metadata_from_meta_file(path, lang=None):
             meta['description'] = description
 
         return meta
+
+    elif lang:
+        # Metadata file doesn't exist, but not default language,
+        # So, if default language metadata exists, return that.
+        # This makes the 2-file format detection more reliable (Issue #525)
+        return get_metadata_from_meta_file(path, lang=None)
     else:
         return {}
 
@@ -536,6 +557,7 @@ def get_meta(post, file_metadata_regexp=None, lang=None):
 
     if meta:
         return meta
+    post.is_two_file = False
 
     if file_metadata_regexp is not None:
         meta.update(_get_metadata_from_filename_by_regex(post.source_path,

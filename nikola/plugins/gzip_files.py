@@ -22,7 +22,7 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-"""Implementation of compile_html based on textile."""
+"""Create gzipped copies of files."""
 
 import gzip
 import os
@@ -36,7 +36,7 @@ class GzipFiles(TaskMultiplier):
     name = "gzip"
     is_default = True
 
-    def process(self, task):
+    def process(self, task, prefix):
         if not self.site.config['GZIP_FILES']:
             return []
         if task.get('name') is None:
@@ -45,8 +45,8 @@ class GzipFiles(TaskMultiplier):
             'file_dep': [],
             'targets': [],
             'actions': [],
-            'basename': 'gzip',
-            'name': task.get('name') + '.gz',
+            'basename': '{0}_gzip'.format(prefix),
+            'name': task.get('name').split(":", 1)[-1] + '.gz',
             'clean': True,
         }
         targets = task.get('targets', [])

@@ -118,6 +118,7 @@ class Nikola(object):
             'GALLERY_PATH': 'galleries',
             'GZIP_FILES': False,
             'GZIP_EXTENSIONS': ('.txt', '.htm', '.html', '.css', '.js', '.json'),
+            'HIDE_SOURCELINK': False,
             'HIDE_UNTRANSLATED_POSTS': False,
             'INDEX_DISPLAY_POST_COUNT': 10,
             'INDEX_FILE': 'index.html',
@@ -315,16 +316,20 @@ class Nikola(object):
 
         self.GLOBAL_CONTEXT['twitter_card'] = self.config.get(
             'TWITTER_CARD', {})
+        self.GLOBAL_CONTEXT['hide_sourcelink'] = self.config.get(
+            'HIDE_SOURCELINK')
         self.GLOBAL_CONTEXT['extra_head_data'] = self.config.get('EXTRA_HEAD_DATA')
 
         self.GLOBAL_CONTEXT.update(self.config.get('GLOBAL_CONTEXT', {}))
 
         # check if custom css exist and is not empty
-        for files_path in list(self.config['FILES_FOLDERS'].keys()):
-            custom_css_path = os.path.join(files_path, 'assets/css/custom.css')
-            if self.file_exists(custom_css_path, not_empty=True):
-                self.GLOBAL_CONTEXT['has_custom_css'] = True
-                break
+        custom_css_path = utils.get_asset_path(
+            'assets/css/custom.css',
+            self.THEMES,
+            self.config['FILES_FOLDERS']
+        )
+        if custom_css_path and self.file_exists(custom_css_path, not_empty=True):
+            self.GLOBAL_CONTEXT['has_custom_css'] = True
         else:
             self.GLOBAL_CONTEXT['has_custom_css'] = False
 
@@ -625,11 +630,11 @@ class Nikola(object):
                 yield task
                 for multi in self.plugin_manager.getPluginsOfCategory("TaskMultiplier"):
                     flag = False
-                    for task in multi.plugin_object.process(task):
+                    for task in multi.plugin_object.process(task, name):
                         flag = True
                         yield task
                     if flag:
-                        task_dep.append(multi.plugin_object.name)
+                        task_dep.append('{0}_{1}'.format(name, multi.plugin_object.name))
             if pluginInfo.plugin_object.is_default:
                 task_dep.append(pluginInfo.plugin_object.name)
         yield {

@@ -22,39 +22,21 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-"""Implementation of compile_html for HTML source files."""
+from __future__ import print_function
 
-import os
-import shutil
-import codecs
-
-from nikola.plugin_categories import PageCompiler
+from nikola.plugin_categories import Command
+from nikola.main import VERSION
 
 
-class CompileHtml(PageCompiler):
-    """Compile HTML into HTML."""
+class CommandVersion(Command):
+    """Print the version."""
 
-    name = "html"
+    name = "version"
 
-    def compile_html(self, source, dest, is_two_file=True):
-        try:
-            os.makedirs(os.path.dirname(dest))
-        except Exception:
-            pass
-        shutil.copyfile(source, dest)
-        return True
+    doc_usage = ""
+    needs_config = False
+    doc_purpose = """Print the Nikola version number."""
 
-    def create_post(self, path, onefile=False, **kw):
-        metadata = {}
-        metadata.update(self.default_metadata)
-        metadata.update(kw)
-        d_name = os.path.dirname(path)
-        if not os.path.isdir(d_name):
-            os.makedirs(os.path.dirname(path))
-        with codecs.open(path, "wb+", "utf8") as fd:
-            if onefile:
-                fd.write('<!-- \n')
-                for k, v in metadata.items():
-                    fd.write('.. {0}: {1}\n'.format(k, v))
-                fd.write('-->\n\n')
-            fd.write("\n<p>Write your post here.</p>")
+    def _execute(self, options={}, args=None):
+        """Print the version number."""
+        print("Nikola version %s" % VERSION)

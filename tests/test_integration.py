@@ -94,6 +94,11 @@ class DemoBuildTest(EmptyBuildTest):
                 ".. date: 2013/03/06 19:08:15\n"
             )
 
+    def test_index_in_sitemap(self):
+        sitemap_path = os.path.join(self.target_dir, "output", "sitemap.xml")
+        sitemap_data = codecs.open(sitemap_path, "r", "utf8").read()
+        self.assertTrue('<loc>http://nikola.ralsina.com.ar/</loc>' in sitemap_data)
+
 
 class FuturePostTest(DemoBuildTest):
     """Test a site with future posts."""
@@ -189,6 +194,13 @@ class RelativeLinkTest(DemoBuildTest):
         # But I also need to be sure it is there!
         self.assertTrue(flag)
 
+    def test_index_in_sitemap(self):
+        """Test that the correct path is in sitemap, and not the wrong one."""
+        sitemap_path = os.path.join(self.target_dir, "output", "sitemap.xml")
+        sitemap_data = codecs.open(sitemap_path, "r", "utf8").read()
+        self.assertFalse('<loc>http://nikola.ralsina.com.ar/</loc>' in sitemap_data)
+        self.assertTrue('<loc>http://nikola.ralsina.com.ar/foo/bar/</loc>' in sitemap_data)
+
 
 class TestCheck(DemoBuildTest):
     """The demo build should pass 'nikola check'"""
@@ -250,3 +262,10 @@ class RelativeLinkTest2(DemoBuildTest):
                     flag = True
         # But I also need to be sure it is there!
         self.assertTrue(flag)
+
+    def test_index_in_sitemap(self):
+        """Test that the correct path is in sitemap, and not the wrong one."""
+        sitemap_path = os.path.join(self.target_dir, "output", "sitemap.xml")
+        sitemap_data = codecs.open(sitemap_path, "r", "utf8").read()
+        self.assertFalse('<loc>http://nikola.ralsina.com.ar/</loc>' in sitemap_data)
+        self.assertTrue('<loc>http://nikola.ralsina.com.ar/blog/</loc>' in sitemap_data)
